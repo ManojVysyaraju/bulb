@@ -2,62 +2,42 @@
 
 > Design-phase validation artifact for the signed flow-context / capability-token idea discussed in Issue #1 (#28J/#28K). This document defines what to test before the pattern is promoted from candidate to architectural standard.
 
-## 1. Intent
+## Intent
 
-Dawat has two related pieces of execution context:
+Dawat distinguishes **Session ID** (continuous interaction/context) from **Correlation ID** (one specific flow/action execution within that session). A session can contain many flows and therefore many correlation IDs.
 
-- **Session ID** — identifies a continuous customer interaction/context.
-- **Correlation ID** — identifies one specific flow/action execution within that session.
+The proposed token cryptographically binds execution context so participating services can detect context substitution, mismatch, replay, or confused-deputy behavior.
 
-A single session may contain many flows and therefore many correlation IDs.
+The token does **not** replace authentication, service identity/mTLS, receiver-side authorization, workflow/state validation, event idempotency, or audit/event history.
 
-The proposed token would cryptographically bind important execution context so that every participating service can detect context substitution, mismatch, replay, or confused-deputy behavior.
+## Candidate context
 
-The token is **not** intended to replace authentication, service-to-service identity/mTLS, receiver-side authorization/policy evaluation, state/workflow validation, event idempotency, or audit/event history.
+A candidate token may bind:
 
-It is an **integrity and scoped-capability mechanism around an already authenticated and authorized execution context**.
+- subject/actor
+- tenant
+- branch/resource scope
+- session ID
+- correlation ID
+- flow type/instance
+- target resource
+- capability/scope
+- audience
+- issuer/key identifier
+- issued-at / expiry
+- nonce/jti or equivalent replay identifier
+- delegation provenance
+- relevant state/version when required
 
-## 2. Candidate model
+Exact token format is intentionally not selected yet.
 
-```text
-Authenticated identity
-        ↓
-Authorization / Policy
-        ↓
-Issue or narrow flow context
-        ↓
-Signed Flow Context Token
-        ↓
-Service A → Service B → Service C
-        ↓
-Validate token + authenticated caller + local policy + state
-        ↓
-Proceed / reject / alert
-```
+## Security invariants
 
-A candidate token may bind subject/actor, tenant, branch/resource scope, session ID, correlation ID, flow type/instance, target resource, capability/scope, audience, issuer/key identifier, issued-at, expiry, nonce/jti, delegation provenance and relevant state/version where needed.
+The battle must verify identity, tenant, branch/resource, session, correlation, flow, audience, capability, expiry/freshness, replay, delegation and state integrity. A valid token must never bypass authorization or normal workflow transitions. Provider semantics must remain outside the core token model.
 
-The exact token format is intentionally **not selected** by this document.
+## Threat/adversarial test matrix
 
-## 3. Security invariants to test
-
-- **Identity integrity:** detect authenticated identity vs token-subject mismatch.
-- **Tenant integrity:** a token issued for Restaurant A cannot operate on Restaurant B.
-- **Branch/resource integrity:** bound branch/resource changes fail.
-- **Session integrity:** a flow context from Session S1 cannot silently become Session S2 where binding is required.
-- **Correlation integrity:** a token issued for Correlation C1 cannot be accepted as Correlation C2.
-- **Flow integrity:** one flow cannot authorize an unrelated flow merely because identity and tenant match.
-- **Audience integrity:** a token intended for Service B cannot authorize Service C unless explicitly designed for that audience.
-- **Capability integrity:** a narrowed child token never gains authority beyond its parent.
-- **Expiry/freshness:** expired/stale context fails safely.
-- **Replay resistance:** captured tokens cannot enable unauthorized repeated execution where replay protection is required.
-- **Delegation integrity:** delegated execution preserves original subject, acting actor/provenance and delegated scope.
-- **State integrity:** a valid token cannot bypass workflow/state transition rules.
-- **Provider independence:** token semantics do not encode Meta/provider-specific assumptions.
-
-## 4. Threat model / adversarial test matrix
-
-| Test | Attack / fault | Expected result |
+| Test | Attack/fault | Expected result |
 |---|---|---|
 | T01 | Change subject A → B | Reject + security signal |
 | T02 | Change tenant A → B | Reject + security signal |
@@ -70,23 +50,23 @@ The exact token format is intentionally **not selected** by this document.
 | T09 | Use valid token at wrong audience | Reject |
 | T10 | Use expired token | Reject |
 | T11 | Replay valid token | Reject when operation is replay-sensitive |
-| T12 | Reuse token after capability revocation | Reject within defined revocation bound |
-| T13 | Request broader child scope than parent | Refuse issuance/narrowing |
+| T12 | Reuse after capability revocation | Reject within defined revocation bound |
+| T13 | Request broader child scope | Refuse issuance/narrowing |
 | T14 | Invoke privileged operation not represented by capability | Reject |
 | T15 | Valid token + invalid domain state | Reject through workflow/state machinery |
 | T16 | Valid token + unauthorized current actor | Reject |
-| T17 | Forward token to unintended service | Reject through audience/scope validation |
+| T17 | Forward token to unintended service | Reject via audience/scope |
 | T18 | Concurrent use of same token | Follow explicit concurrency semantics; no privilege escalation |
-| T19 | Out-of-order event with valid token | Handle/reject through domain transition rules |
-| T20 | Retry/replay through recovery path | Re-enter normal authorization/state machinery |
-| T21 | Correlation mismatch with otherwise valid request | Reject + actionable security telemetry |
-| T22 | Same session, legitimately new flow | Accept only with newly issued/valid flow context |
-| T23 | Replace WhatsApp provider | Core token semantics remain unchanged |
-| T24 | Token contains unnecessary PII/secrets | Fail design review; minimize/remove sensitive data |
+| T19 | Out-of-order event with valid token | Handle/reject via domain transition rules |
+| T20 | Retry/replay through recovery | Re-enter normal authorization/state machinery |
+| T21 | Correlation mismatch | Reject + actionable security telemetry |
+| T22 | Same session, legitimate new flow | Accept only with newly issued/valid flow context |
+| T23 | Replace WhatsApp provider | Core token semantics unchanged |
+| T24 | Token contains unnecessary PII/secrets | Fail design review; minimize/remove |
 
-## 5. Distributed execution test
+## Distributed execution test
 
-The battle must cover a complete flow across synchronous and asynchronous boundaries.
+Test a complete synchronous + asynchronous flow:
 
 ```text
 Session S1 / Correlation C4 / Order flow
@@ -102,112 +82,68 @@ WhatsApp → BFF → Ordering
               Domain service
 ```
 
-Verify that:
+Verify that session + correlation survive intended hops; event correlation/causation remain correct; async consumers cannot substitute context; provider callbacks create trusted integration context; retry/DLQ/reconciliation cannot bypass validation; invalid context is operationally visible without exposing secrets/PII.
 
-1. the same session + correlation context survives every intended hop;
-2. event metadata retains correlation/causation correctly;
-3. asynchronous consumers cannot accidentally substitute context;
-4. provider callbacks create a new trusted integration context rather than blindly trusting customer-originated context;
-5. retries, DLQ replay and reconciliation cannot bypass validation;
-6. invalid context is visible to operations without exposing secrets/PII.
+## Candidate approaches
 
-## 6. Candidate approaches to compare
+1. Signed JWT-style flow context
+2. PASETO-style tokens
+3. OAuth 2.0 Token Exchange / delegated scoped tokens
+4. Capability-oriented tokens with audience/resource/scope
+5. No additional flow token: authenticated service identity + session/correlation metadata + authorization/state checks
 
-1. **Signed JWT-style flow context**
-2. **PASETO-style tokens**
-3. **OAuth 2.0 Token Exchange / delegated scoped tokens**
-4. **Capability-oriented tokens with explicit audience/resource/scope**
-5. **No additional flow token** — authenticated service identity + correlation/session metadata + authorization/state checks
+Prefer the simplest mechanism that provides the required properties without duplicating standard authorization machinery.
 
-The winner is not automatically the most sophisticated mechanism. Prefer the **simplest mechanism that provides the required integrity/security properties without duplicating standard authorization machinery**.
-
-## 7. Success criteria
-
-The candidate becomes an architectural standard only if all of the following are satisfied.
+## Success criteria
 
 ### Security
 
-- **100% rejection** of intentional subject/tenant/branch/resource/correlation/flow substitution in the test suite.
-- No privilege escalation through token narrowing, forwarding or delegation.
-- Replay behavior is explicitly defined and passes required replay tests.
-- Expiry/revocation behavior meets the defined security bound.
-- Wrong-audience use is rejected.
-- Token forgery/tampering is rejected.
-- A valid token never bypasses authorization or state-transition checks.
+- 100% rejection of intentional subject/tenant/branch/resource/correlation/flow substitution.
+- No privilege escalation through narrowing, forwarding or delegation.
+- Replay, expiry and revocation behavior explicitly defined and passing.
+- Wrong audience rejected.
+- Forgery/tampering rejected.
+- Valid token never bypasses authorization/state transition.
 
 ### Correctness
 
-- Session ID remains stable across flows within a session.
-- Correlation ID changes for each distinct flow/action execution as defined by the flow model.
-- All synchronous and asynchronous participants preserve the correct context.
-- Correlation, causation and event identity remain distinct and correct.
-- Retry, replay and reconciliation preserve context without creating accidental authority.
+- Session ID stable across flows in one session.
+- Correlation ID changes for each distinct flow/action execution.
+- All sync/async participants preserve context.
+- Correlation, causation and event identity remain distinct.
+- Retry/replay/reconciliation cannot create accidental authority.
 
-### Operational safety
+### Operations
 
-- Invalid-context failures produce actionable security/operational signals.
-- Alerts distinguish security/integrity violations from ordinary 4xx business outcomes and infrastructure failures.
-- Token validation does not create an unacceptable availability dependency.
-- Key rotation and failure/recovery procedures are demonstrated.
-- The system is diagnosable through Session → Correlation → Trace → Event → Service relationships.
+- Invalid-context failures produce actionable signals.
+- Security mismatches are distinguishable from ordinary 4xx and infrastructure failures.
+- Validation does not introduce an unacceptable availability dependency.
+- Key rotation and failure/recovery are demonstrated.
+- Session → Correlation → Trace → Event → Service remains diagnosable.
 
-### Privacy
+### Privacy/portability
 
-- No unnecessary PII or secrets are embedded in tokens.
-- Token contents are safe to handle according to their classification.
-- Logs/traces never expose signing secrets or sensitive token material.
-
-### Portability
-
-- Core domain models contain no Meta/provider-specific token semantics.
-- Replacing Meta/payment/delivery providers does not require redesigning the flow-context model.
-- Provider adapters can create/translate trusted integration context at the boundary.
+- No unnecessary PII/secrets in tokens.
+- No sensitive token material in logs/traces.
+- Core domain contains no Meta/provider-specific token semantics.
+- Provider replacement does not require redesigning flow context.
 
 ### Complexity
 
-The mechanism must justify its operational and development complexity. If authenticated service identity + authorization + workflow validation already provides equivalent protection for a boundary, the token should not be added merely for architectural elegance.
+The mechanism must justify its complexity. If authenticated service identity + authorization + workflow validation already provides equivalent protection at a boundary, do not add the token merely for architectural elegance.
 
-## 8. Failure classification
+## Decision gate
 
-A failed token/context check is not automatically the same as an ordinary client error.
+**A — Adopt:** platform-wide documented pattern.
 
-```text
-Context validation
-       ↓
- ┌─────┼───────────────┐
- │     │               │
-Expected invalid   Suspicious mismatch   Infrastructure failure
- │                 │                     │
-Controlled 4xx     Security signal       5xx/availability handling
-```
+**B — Adopt selectively:** only at boundaries where cryptographic flow binding materially improves security/delegation/confused-deputy protection.
 
-The exact classification should be determined by the receiver and failure policy. Unexpected internal failures remain engineering defects; the system should target zero unhandled 5xx.
+**C — Reject:** standard identity + authorization + workflow/state validation is sufficient.
 
-## 9. Decision gate
+Default expectation: **B is acceptable** if evidence shows value only at selected trust boundaries. Do not force the mechanism onto every internal call.
 
-After the battle, choose exactly one outcome:
+## Exit criteria
 
-### A — Adopt
-The flow-context/capability token becomes a platform security pattern with documented contract and implementation rules.
+Move on when the threat matrix is executed, candidate approaches are compared, security/correctness/operations/privacy/portability criteria have a clear result, A/B/C is selected and recorded in Issue #1, rejected assumptions are documented, and no unresolved question materially affects the next architecture decision.
 
-### B — Adopt selectively
-Use it only for boundaries where cryptographic flow binding materially improves security, delegation or confused-deputy protection.
-
-### C — Reject
-Standard authenticated service identity + authorization + workflow/state validation provides sufficient protection and the additional token complexity is not justified.
-
-**Default expectation:** B is acceptable if evidence shows the mechanism is valuable only at selected trust boundaries. Do not force it onto every internal call merely because it exists.
-
-## 10. Exit criteria before moving on
-
-We can move to the next architectural problem when:
-
-- the threat/test matrix has been executed;
-- candidate approaches have been compared;
-- security/correctness/operational/privacy/portability criteria have a clear result;
-- one of A/B/C is selected;
-- the selected pattern is recorded in Issue #1;
-- rejected assumptions are documented;
-- no unresolved question materially affects the next architecture decision.
-
-Until then, this remains a **candidate pattern**, not a mandatory platform dependency.
+Until then this remains a candidate pattern, not a mandatory platform dependency.
