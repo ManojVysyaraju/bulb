@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package dawat.benchmark.v1;
+
+option go_package = "github.com/ManojVysyaraju/bulb/benchmarks/27f/go/gen;gen";
+
+message Money {
+  int64 amount_minor = 1;
+  string currency = 2;
+}
+
+message AuthorizeRequest {
+  string subject_id = 1;
+  string tenant_id = 2;
+  string branch_id = 3;
+  repeated string capabilities = 4;
+  string operation = 5;
+  string correlation_id = 6;
+}
+
+message AuthorizeResponse {
+  bool allowed = 1;
+  string decision_id = 2;
+  string reason = 3;
+}
+
+message OrderItem {
+  string item_id = 1;
+  int32 quantity = 2;
+  Money unit_price = 3;
+  repeated string modifier_ids = 4;
+}
+
+message CreateOrderRequest {
+  string order_id = 1;
+  string restaurant_group_id = 2;
+  string branch_id = 3;
+  string customer_id = 4;
+  repeated OrderItem items = 5;
+  string currency = 6;
+  string correlation_id = 7;
+  map<string, string> attributes = 8;
+}
+
+message CreateOrderResponse {
+  string order_id = 1;
+  string status = 2;
+  Money subtotal = 3;
+  Money tax = 4;
+  Money total = 5;
+}
+
+message GetOrderStatusRequest {
+  string order_id = 1;
+  string restaurant_group_id = 2;
+}
+
+message GetOrderStatusResponse {
+  string order_id = 1;
+  string status = 2;
+  string updated_at = 3;
+}
+
+message GetOrderDetailsRequest {
+  string order_id = 1;
+  string restaurant_group_id = 2;
+}
+
+message GetOrderDetailsResponse {
+  string order_id = 1;
+  string status = 2;
+  string customer_id = 3;
+  repeated OrderItem items = 4;
+  Money subtotal = 5;
+  Money tax = 6;
+  Money total = 7;
+  map<string, string> attributes = 8;
+}
+
+message GetMenuItemRequest {
+  string restaurant_group_id = 1;
+  string branch_id = 2;
+  string item_id = 3;
+}
+
+message GetMenuItemResponse {
+  string item_id = 1;
+  string name = 2;
+  string description = 3;
+  Money base_price = 4;
+  bool available = 5;
+  repeated string tags = 6;
+}
+
+message MenuEntry {
+  string item_id = 1;
+  string name = 2;
+  string description = 3;
+  Money price = 4;
+  bool available = 5;
+  repeated string tags = 6;
+}
+
+message MenuRequest {
+  string restaurant_group_id = 1;
+  string branch_id = 2;
+  int32 item_count = 3;
+}
+
+message MenuResponse {
+  repeated MenuEntry items = 1;
+}
+
+service DawatBenchmark {
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrderStatus(GetOrderStatusRequest) returns (GetOrderStatusResponse);
+  rpc GetOrderDetails(GetOrderDetailsRequest) returns (GetOrderDetailsResponse);
+  rpc GetMenuItem(GetMenuItemRequest) returns (GetMenuItemResponse);
+  rpc GetMenu(MenuRequest) returns (MenuResponse);
+}
