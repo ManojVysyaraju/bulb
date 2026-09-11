@@ -164,13 +164,13 @@ A security mismatch should be observable as a security signal even when the exte
 
 ### Observability — PASS with constraints
 
-OpenTelemetry's current semantic conventions cover HTTP, RPC and messaging and provide standard client/server operation, status and error attributes. The architecture should adopt these conventions and add only a small Dawat correlation layer. Telemetry must remain non-authoritative and non-blocking. citeturn0search0turn0search1turn0search2
+OpenTelemetry's current semantic conventions cover HTTP, RPC and messaging and provide standard client/server operation, status and error attributes. The architecture should adopt these conventions and add only a small Dawat correlation layer. Telemetry must remain non-authoritative and non-blocking.
 
 ### Webhook ingestion — PASS with constraints
 
-The proposed adapter boundary survives the threat model. The critical rule is that **authentication is not authorization and a valid provider signature is not permission to mutate arbitrary domain state**. RFC 9421 reinforces the need for sufficient signed coverage and explicit replay defenses; OWASP similarly emphasizes TLS, authentication, integrity and validation. Provider-native signature schemes remain authoritative where supplied. citeturn1search0turn3search0
+The proposed adapter boundary survives the threat model. The critical rule is that **authentication is not authorization and a valid provider signature is not permission to mutate arbitrary domain state**. RFC 9421 reinforces the need for sufficient signed coverage and explicit replay defenses; OWASP similarly emphasizes TLS, authentication, integrity and validation. Provider-native signature schemes remain authoritative where supplied.
 
-CloudEvents is suitable as an interoperability envelope/reference, but it does not replace provider authentication, deduplication or domain validation. citeturn2search0
+CloudEvents is suitable as an interoperability envelope/reference, but it does not replace provider authentication, deduplication or domain validation.
 
 ### Projection/read model — PASS with constraints
 
