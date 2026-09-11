@@ -160,32 +160,29 @@ Target remains **zero unhandled/unclassified 5xx**, not zero 5xx under all opera
 
 A security mismatch should be observable as a security signal even when the external API response is a controlled 4xx.
 
-## Success criteria
+## Initial battle result
 
-### Observability
+### Observability — PASS with constraints
 
-- 100% of material flows can be followed across sync + async boundaries.
-- Session/correlation/trace/event identity remain distinct and linkable.
-- Retry/replay/reconciliation attempts are visible without creating false business events.
-- No secrets or unnecessary PII in telemetry.
-- Telemetry outage does not stop business processing.
+OpenTelemetry's current semantic conventions cover HTTP, RPC and messaging and provide standard client/server operation, status and error attributes. The architecture should adopt these conventions and add only a small Dawat correlation layer. Telemetry must remain non-authoritative and non-blocking. citeturn0search0turn0search1turn0search2
 
-### Webhooks
+### Webhook ingestion — PASS with constraints
 
-- 100% invalid signatures rejected.
-- 100% cross-tenant/resource substitutions rejected.
-- Duplicate provider events produce zero duplicate business effects.
-- Out-of-order events cannot silently regress authoritative state.
-- Replay/recovery cannot bypass normal transition machinery.
-- Provider-specific semantics remain inside adapters.
+The proposed adapter boundary survives the threat model. The critical rule is that **authentication is not authorization and a valid provider signature is not permission to mutate arbitrary domain state**. RFC 9421 reinforces the need for sufficient signed coverage and explicit replay defenses; OWASP similarly emphasizes TLS, authentication, integrity and validation. Provider-native signature schemes remain authoritative where supplied. citeturn1search0turn3search0
 
-### Projections
+CloudEvents is suitable as an interoperability envelope/reference, but it does not replace provider authentication, deduplication or domain validation. citeturn2search0
 
-- Duplicate delivery is idempotent.
-- Projection failure does not block authoritative transactions.
-- Rebuild/replay is demonstrably possible for projections marked rebuildable.
-- Stale projections cannot authorize state-changing business decisions.
-- Tenant isolation and lifecycle policy hold across derived stores.
+### Projection/read model — PASS with constraints
+
+The projection model is sound provided projections remain derived and non-authoritative, consumers are idempotent, and rebuild/replay is supported where required. Stale projections must never authorize or execute state-changing operations. This preserves the existing event-first architecture without introducing a universal projection service.
+
+### Important finding
+
+The battle confirms a stronger invariant:
+
+> **External events can provide evidence about external reality, but only the owning domain service can decide the corresponding internal state transition.**
+
+This applies equally to Meta, payment providers, delivery providers and future integrations.
 
 ## Decision gate
 
@@ -195,6 +192,19 @@ A security mismatch should be observable as a security signal even when the exte
 
 **C — Redesign:** a core invariant fails and the event-first architecture needs material change.
 
+**Current result: B — Adopt with constraints.**
+
+Constraints are: provider-specific authenticity remains at the integration boundary; OpenTelemetry conventions are preferred over custom telemetry semantics; webhook events never bypass domain authorization/state transitions; projections remain non-authoritative; and telemetry cannot become a hard runtime dependency.
+
+## Remaining implementation battles
+
+1. Exact telemetry backend/collection topology and SLO/alert model.
+2. Per-provider webhook signature/verification/replay mechanics.
+3. Event envelope/versioning decision (including whether/where to use CloudEvents).
+4. Projection storage/rebuild strategy and retention/lifecycle behavior.
+
+These are implementation/pocket-time questions unless a new architectural conflict appears.
+
 ## Exit criteria
 
-Move on when the three battle areas have explicit pass/fail results, critical failure modes have owners/mitigations, no architectural invariant remains ambiguous, and Issue #1 records the decision. Vendor selection and implementation details can remain separate unless they affect the architectural result.
+Move on when the remaining constraints have owners/implementation decisions and no architectural invariant remains ambiguous. Vendor selection can remain separate unless it changes the architectural result.
